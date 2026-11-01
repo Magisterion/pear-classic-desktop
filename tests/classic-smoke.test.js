@@ -140,7 +140,7 @@ test('Spear preferences use local IPC and portable data', async () => {
       0,
     );
     await expect(
-      settings.getByText('Version 3.12.25', { exact: true }),
+      settings.getByText('Version 3.12.26', { exact: true }),
     ).toBeVisible();
     const pin = settings.getByLabel('Always on top', { exact: true });
     const pinButton = player.locator(
@@ -660,25 +660,34 @@ test('Spear preferences use local IPC and portable data', async () => {
     ).toHaveAttribute('aria-pressed', 'true');
     const ratingColors = await tray.evaluate(() =>
       ['like', 'dislike'].map((id) => {
-        const s = getComputedStyle(document.getElementById(id));
-        return { background: s.backgroundColor, color: s.color };
+        const button = document.getElementById(id);
+        const s = getComputedStyle(button);
+        return {
+          background: s.backgroundColor,
+          fill: getComputedStyle(button.querySelector('svg')).fill,
+        };
       }),
     );
-    expect(ratingColors[0].background).not.toBe(ratingColors[1].background);
-    expect(ratingColors[0].color).not.toBe(ratingColors[1].color);
+    expect(ratingColors[0].background).toBe(ratingColors[1].background);
+    expect(ratingColors[0].fill).not.toBe('none');
+    expect(ratingColors[1].fill).toBe('none');
     const speakerColors = await tray.evaluate(() => {
       audio(0.8, { bass: 0.8, high: 0.02, energy: 0.5 });
       const bass = document.body.style.getPropertyValue('--speaker-color');
+      const smoothed = Number(document.body.style.getPropertyValue('--bass'));
       audio(0.8, { bass: 0.02, high: 0.8, energy: 0.5 });
       const treble = document.body.style.getPropertyValue('--speaker-color');
       audio(0);
       return {
         bass,
+        smoothed,
         treble,
         glow: document.body.style.getPropertyValue('--speaker-glow'),
       };
     });
     expect(speakerColors.bass).not.toBe(speakerColors.treble);
+    expect(speakerColors.smoothed).toBeGreaterThan(0);
+    expect(speakerColors.smoothed).toBeLessThan(0.8);
     expect(speakerColors.glow).toContain(',0)');
     await tray.getByRole('button', { name: 'Dislike', exact: true }).click();
     expect(await tray.evaluate(() => window.classic.lastRequest())).toEqual({
