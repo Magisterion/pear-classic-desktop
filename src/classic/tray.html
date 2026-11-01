@@ -283,14 +283,26 @@
       .speaker:last-child {
         margin-left: auto;
       }
+      .speaker::before {
+        border-color: var(--speaker-high, #586574);
+        box-shadow: 0 0 calc(var(--bass, 0) * 12px)
+          var(--speaker-glow, transparent);
+        transition:
+          border-color 180ms ease-out,
+          box-shadow 180ms ease-out;
+      }
       .speaker::after {
         width: 26px;
         height: 26px;
         transform: scale(calc(0.65 + var(--bass, 0) * 0.8));
-        box-shadow: 0 0 calc(var(--bass, 0) * 12px) var(--shell-accent);
+        border-color: var(--speaker-color, #586574);
+        box-shadow:
+          0 0 calc(var(--bass, 0) * 22px) var(--speaker-glow, transparent),
+          inset 0 0 calc(var(--bass, 0) * 12px) var(--speaker-glow, transparent);
         transition:
           transform 45ms linear,
-          box-shadow 45ms linear;
+          box-shadow 180ms ease-out,
+          border-color 180ms ease-out;
       }
       .bottom {
         height: 28px;
@@ -323,8 +335,10 @@
         height: 18px;
       }
       .ratings button[aria-pressed='true'] {
-        color: var(--shell-accent);
-        border-color: var(--shell-accent);
+        color: var(--shell-accent-text, #19212d);
+        background: var(--shell-accent);
+        border: 2px solid var(--shell-accent-text, #19212d);
+        box-shadow: 0 0 0 2px var(--shell-accent);
       }
       .ratings button:disabled {
         opacity: 0.4;
@@ -523,12 +537,31 @@
       };
       let refreshing = false;
       let audioAt = 0;
-      function audio(level) {
+      function audio(level, bands = {}) {
         audioAt = Date.now();
-        document.body.style.setProperty(
-          '--bass',
-          String(Math.max(0, Math.min(1, Number(level) || 0))),
+        const amount = Math.max(0, Math.min(1, Number(level) || 0));
+        const energy = Math.max(
+          0,
+          Math.min(1, Number(bands.energy ?? amount) || 0),
         );
+        const bass = Math.max(0, Number(bands.bass) || 0),
+          high = Math.max(0, Number(bands.high) || 0);
+        const hue = 185 + Math.min(1, high / (bass + high + 0.01)) * 130;
+        const light =
+          energy < 0.015 ? 0 : Math.min(1, amount * 1.4 + energy * 0.3);
+        const style = document.body.style;
+        style.setProperty('--bass', String(amount));
+        style.setProperty(
+          '--speaker-color',
+          light
+            ? `hsl(${hue}, ${Math.round(50 + light * 50)}%, ${Math.round(35 + light * 40)}%)`
+            : '#586574',
+        );
+        style.setProperty(
+          '--speaker-high',
+          light ? `hsl(${hue + 65},90%,${35 + light * 40}%)` : '#586574',
+        );
+        style.setProperty('--speaker-glow', `hsla(${hue},100%,65%,${light})`);
       }
       window.classic.onAudio?.(audio);
       setInterval(() => {
@@ -560,7 +593,7 @@
             );
           document.body.dataset.speakers = String(s.animatedSpeakers !== false);
           if (s.paused || Date.now() - audioAt > 250)
-            audio(s.paused ? 0 : s.bass);
+            audio(s.paused ? 0 : s.bass, s.paused ? {} : s.bands);
           if (s.palette) {
             document.body.dataset.pixel = String(!!s.palette.pixel);
             document.body.style.setProperty(

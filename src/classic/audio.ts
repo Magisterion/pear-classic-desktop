@@ -143,6 +143,11 @@ export function initializeAudio(
           Math.max(0, audioMotion.bass - baseline * 0.7) * 3 +
             audioMotion.energy * 0.15,
         ),
+        {
+          bass: audioMotion.bass,
+          high: audioMotion.high,
+          energy: audioMotion.energy,
+        },
       );
   };
   const sync = () => {

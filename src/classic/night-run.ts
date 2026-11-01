@@ -1,3 +1,8 @@
+import {
+  currentArtwork,
+  playingBackgroundVideo,
+  setArtworkSource,
+} from './media';
 import { audioMotion, getAudioGraph } from './audio';
 import { activity, onActivityChange } from './activity';
 import { createCollector } from './collector';
@@ -218,7 +223,7 @@ function openGame() {
       root.pointerLockElement === canvas
     )
       document.exitPointerLock();
-    cover.onload = null;
+    cover.onload = cover.onerror = null;
     cover.removeAttribute('src');
     host.remove();
     document.dispatchEvent(new Event('spear:surface-change'));
@@ -322,18 +327,36 @@ function openGame() {
     // replace it even when the same visualizer continues rendering.
     if (time >= nextArtworkCheck && (run.celebration <= 0 || run.arriving)) {
       nextArtworkCheck = time + 250;
-      const image = document.querySelector<HTMLImageElement>(
-        'ytmusic-player-bar img.image, ytmusic-player-bar img',
-      );
-      const url = image?.currentSrc || image?.src || '';
+      const url = currentArtwork();
       if (url !== coverUrl) {
         coverUrl = url;
-        if (url) cover.src = url;
+        if (url) setArtworkSource(cover, url);
         else cover.removeAttribute('src');
       }
       host.dataset.cover = url ? 'available' : 'none';
     }
-    if (coverUrl && cover.complete && cover.naturalWidth) {
+    let videoBackground = false;
+    const backgroundVideo =
+      run.celebration <= 0 || run.arriving ? playingBackgroundVideo() : null;
+    if (backgroundVideo) {
+      const scale = Math.max(
+        width / backgroundVideo.videoWidth,
+        height / backgroundVideo.videoHeight,
+      );
+      const w = backgroundVideo.videoWidth * scale,
+        h = backgroundVideo.videoHeight * scale;
+      try {
+        ctx.globalAlpha = 0.48;
+        ctx.drawImage(backgroundVideo, (width - w) / 2, (height - h) / 2, w, h);
+        videoBackground = true;
+      } catch {
+        /* During source replacement, keep the artwork fallback. */
+      } finally {
+        ctx.globalAlpha = 1;
+      }
+    }
+    host.dataset.background = videoBackground ? 'video' : 'artwork';
+    if (!videoBackground && coverUrl && cover.complete && cover.naturalWidth) {
       const scale = Math.max(
         width / cover.naturalWidth,
         height / cover.naturalHeight,
@@ -348,7 +371,7 @@ function openGame() {
     let hasBackground = false;
     if (visualizer && visualizer.width && visualizer.height) {
       try {
-        ctx.globalAlpha = 0.25;
+        ctx.globalAlpha = videoBackground ? 0.12 : 0.25;
         ctx.globalCompositeOperation = 'screen';
         ctx.drawImage(visualizer, 0, 0, width, height);
         hasBackground = true;
@@ -358,7 +381,7 @@ function openGame() {
         ctx.globalCompositeOperation = 'source-over';
       }
     }
-    if (!hasBackground) {
+    if (!hasBackground && !videoBackground) {
       for (let i = 0; i < 24; i++) {
         ctx.strokeStyle = `hsla(${185 + i * 6},85%,65%,${0.08 + audioMotion.energy * 0.18})`;
         ctx.lineWidth = 2;

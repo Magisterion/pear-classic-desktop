@@ -3,7 +3,9 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('classic', {
   onRefresh: (callback) => ipcRenderer.on('classic:refresh', () => callback()),
   onAudio: (callback) =>
-    ipcRenderer.on('classic:audio-level', (_event, level) => callback(level)),
+    ipcRenderer.on('classic:audio-level', (_event, level, bands) =>
+      callback(level, bands),
+    ),
   onTab: (callback) =>
     ipcRenderer.on('classic:settings-tab', (_event, tab) => callback(tab)),
   request: (action, value) =>

@@ -140,7 +140,7 @@ test('Spear preferences use local IPC and portable data', async () => {
       0,
     );
     await expect(
-      settings.getByText('Version 3.12.24', { exact: true }),
+      settings.getByText('Version 3.12.25', { exact: true }),
     ).toBeVisible();
     const pin = settings.getByLabel('Always on top', { exact: true });
     const pinButton = player.locator(
@@ -401,6 +401,11 @@ test('Spear preferences use local IPC and portable data', async () => {
     });
     await layout.addScriptTag({
       content: stripTypeScriptTypes(
+        await fs.readFile(path.join(root, 'src/classic/media.ts'), 'utf8'),
+      ).replaceAll('export ', ''),
+    });
+    await layout.addScriptTag({
+      content: stripTypeScriptTypes(
         await fs.readFile(
           path.join(root, 'src/plugins/visualizer/stage.ts'),
           'utf8',
@@ -653,6 +658,28 @@ test('Spear preferences use local IPC and portable data', async () => {
     await expect(
       tray.getByRole('button', { name: 'Like', exact: true }),
     ).toHaveAttribute('aria-pressed', 'true');
+    const ratingColors = await tray.evaluate(() =>
+      ['like', 'dislike'].map((id) => {
+        const s = getComputedStyle(document.getElementById(id));
+        return { background: s.backgroundColor, color: s.color };
+      }),
+    );
+    expect(ratingColors[0].background).not.toBe(ratingColors[1].background);
+    expect(ratingColors[0].color).not.toBe(ratingColors[1].color);
+    const speakerColors = await tray.evaluate(() => {
+      audio(0.8, { bass: 0.8, high: 0.02, energy: 0.5 });
+      const bass = document.body.style.getPropertyValue('--speaker-color');
+      audio(0.8, { bass: 0.02, high: 0.8, energy: 0.5 });
+      const treble = document.body.style.getPropertyValue('--speaker-color');
+      audio(0);
+      return {
+        bass,
+        treble,
+        glow: document.body.style.getPropertyValue('--speaker-glow'),
+      };
+    });
+    expect(speakerColors.bass).not.toBe(speakerColors.treble);
+    expect(speakerColors.glow).toContain(',0)');
     await tray.getByRole('button', { name: 'Dislike', exact: true }).click();
     expect(await tray.evaluate(() => window.classic.lastRequest())).toEqual({
       action: 'dislike',
@@ -710,6 +737,11 @@ test('Spear preferences use local IPC and portable data', async () => {
     await game.addScriptTag({
       content: stripTypeScriptTypes(
         await fs.readFile(path.join(root, 'src/classic/collector.ts'), 'utf8'),
+      ).replaceAll('export ', ''),
+    });
+    await game.addScriptTag({
+      content: stripTypeScriptTypes(
+        await fs.readFile(path.join(root, 'src/classic/media.ts'), 'utf8'),
       ).replaceAll('export ', ''),
     });
     await game.addScriptTag({
@@ -982,6 +1014,36 @@ test('Spear preferences use local IPC and portable data', async () => {
       .toBe(0);
     await expect(game.locator('#status')).toHaveText('Another track');
 
+    // Real decoded video frames become the game background, without a second player.
+    await game.evaluate(async () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 320;
+      canvas.height = 180;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#00ff00';
+      ctx.fillRect(0, 0, 320, 180);
+      window.backgroundStream = canvas.captureStream(10);
+      const video = document.querySelector('video');
+      video.srcObject = window.backgroundStream;
+      await video.play();
+    });
+    await expect
+      .poll(() =>
+        game.locator('#spear-pulsefield').getAttribute('data-background'),
+      )
+      .toBe('video');
+    const videoPixel = await game.evaluate(() => [
+      ...document
+        .querySelector('#spear-pulsefield')
+        .shadowRoot.querySelector('canvas')
+        .getContext('2d')
+        .getImageData(10, 120, 1, 1).data,
+    ]);
+    expect(videoPixel[1]).toBeGreaterThan(videoPixel[0] + 30);
+    await game.evaluate(() => {
+      window.backgroundStream.getTracks().forEach((t) => t.stop());
+      document.querySelector('video').srcObject = null;
+    });
     await game.evaluate(() => {
       const video = document.querySelector('video');
       Object.defineProperty(video, 'paused', {
@@ -1596,6 +1658,59 @@ test('Stardrift keeps 32 trails bounded and reacts to music without changing on 
   for (let i = 0; i < 90; i++) game.step(0.016, true, 120, 0.1, false);
   expect(game.transitionFade()).toBe(0);
   expect(r.celebration).toBe(0);
+});
+
+test('current artwork prefers full resolution media metadata and safely sizes Google thumbnails', async () => {
+  const source = stripTypeScriptTypes(
+    await fs.readFile(path.join(root, 'src/classic/media.ts'), 'utf8'),
+  );
+  const { currentArtwork, playingBackgroundVideo } = await import(
+    'data:text/javascript;base64,' + Buffer.from(source).toString('base64')
+  );
+  const previous = globalThis.document;
+  let response = {
+    videoDetails: {
+      thumbnail: {
+        thumbnails: [
+          { url: 'https://example.com/small.jpg', width: 60, height: 60 },
+          { url: 'https://example.com/large.jpg', width: 1200, height: 1200 },
+        ],
+      },
+    },
+  };
+  const video = {
+    paused: false,
+    ended: false,
+    readyState: 4,
+    videoWidth: 1280,
+    videoHeight: 720,
+  };
+  const player = { videoMode_: true };
+  globalThis.document = {
+    querySelector: (selector) =>
+      selector === '#movie_player'
+        ? { getPlayerResponse: () => response }
+        : selector === 'video'
+          ? video
+          : selector === 'ytmusic-player'
+            ? player
+            : { src: 'https://lh3.googleusercontent.com/art=w60-h60-l90-rj' },
+  };
+  try {
+    expect(currentArtwork()).toBe('https://example.com/large.jpg');
+    response = {};
+    expect(currentArtwork()).toBe(
+      'https://lh3.googleusercontent.com/art=w1200-h1200-l90-rj',
+    );
+    expect(playingBackgroundVideo()).toBe(video);
+    player.videoMode_ = false;
+    expect(playingBackgroundVideo()).toBeNull();
+    player.videoMode_ = true;
+    response = { videoDetails: { musicVideoType: 'MUSIC_VIDEO_TYPE_ATV' } };
+    expect(playingBackgroundVideo()).toBeNull();
+  } finally {
+    globalThis.document = previous;
+  }
 });
 
 test('locked configuration survives startup, merges changes, and flushes recovery', async () => {

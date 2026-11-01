@@ -1,3 +1,4 @@
+import { currentArtwork, setArtworkSource } from '@/classic/media';
 import { activity, onActivityChange } from '@/classic/activity';
 
 /** A single visual surface layered over the site's media without moving its video node. */
@@ -23,15 +24,13 @@ export function createVisualizerStage() {
   let mountedPlayer: Element | null = null;
   let media = false;
   let previousLayout = '';
+  let requestedArtwork = '';
   const cover = document.createElement('img');
   cover.className = 'spear-visualizer-cover';
   cover.alt = '';
   container.prepend(cover);
   const layout = () => {
-    const image = document.querySelector<HTMLImageElement>(
-      'ytmusic-player-bar img.image, ytmusic-player-bar img',
-    );
-    const src = image?.currentSrc || image?.src || '';
+    const src = currentArtwork();
     const player = document.querySelector('ytmusic-player');
     const playerState = player?.getAttribute('player-ui-state');
     const key = JSON.stringify([
@@ -49,7 +48,10 @@ export function createVisualizerStage() {
     )
       return;
     previousLayout = key;
-    if (src && cover.src !== src) cover.src = src;
+    if (src && requestedArtwork !== src) {
+      requestedArtwork = src;
+      setArtworkSource(cover, src);
+    }
     cover.hidden = !src;
     if (document.fullscreenElement === container) return;
     if (player instanceof HTMLElement) {
@@ -97,7 +99,7 @@ export function createVisualizerStage() {
     childList: true,
     subtree: true,
     attributes: true,
-    attributeFilter: ['player-ui-state', 'src'],
+    attributeFilter: ['player-ui-state', 'src', 'srcset'],
   });
   sync();
   return {

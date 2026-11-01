@@ -26,6 +26,7 @@ let popup: BrowserWindow | null = null;
 let song: Partial<SongInfo> = {};
 let artwork = '';
 let audioLevel = 0;
+let audioBands = { bass: 0, high: 0, energy: 0 };
 let gamePreviousFullscreen: boolean | null = null;
 let gameEnteringFullscreen = false;
 let gamePendingRestore: boolean | null = null;
@@ -413,7 +414,7 @@ export function setupClassic(win: BrowserWindow) {
     applyStyle();
   });
   applyStyle();
-  ipcMain.on('classic:audio-level', (event, level: unknown) => {
+  ipcMain.on('classic:audio-level', (event, level: unknown, bands: unknown) => {
     if (
       event.sender !== win.webContents ||
       typeof level !== 'number' ||
@@ -421,9 +422,21 @@ export function setupClassic(win: BrowserWindow) {
     )
       return;
     audioLevel = Math.max(0, Math.min(1, level));
+    if (bands && typeof bands === 'object') {
+      const data = bands as Record<string, unknown>;
+      const band = (key: string) =>
+        typeof data[key] === 'number' && Number.isFinite(data[key])
+          ? Math.max(0, Math.min(1, data[key] as number))
+          : 0;
+      audioBands = {
+        bass: band('bass'),
+        high: band('high'),
+        energy: band('energy'),
+      };
+    } else audioBands = { bass: audioLevel, high: 0, energy: audioLevel };
     audioLevelAt = Date.now();
     if (popup?.isVisible())
-      popup.webContents.send('classic:audio-level', audioLevel);
+      popup.webContents.send('classic:audio-level', audioLevel, audioBands);
   });
   win.webContents.on('before-input-event', (event, input) => {
     if (
@@ -566,7 +579,8 @@ export function setupClassic(win: BrowserWindow) {
         const clock = (await win.webContents
           .executeJavaScript(`(() => {
           const v = document.querySelector('video');
-          return v ? { elapsed: v.currentTime, duration: Number.isFinite(v.duration) ? v.duration : 0, paused: v.paused, rating: document.querySelector('ytmusic-like-button-renderer')?.getAttribute('like-status') || 'INDIFFERENT', canRate: !!document.querySelector('ytmusic-like-button-renderer') } : null;
+          const rating = document.querySelector('ytmusic-player-bar #like-button-renderer, ytmusic-player-bar ytmusic-like-button-renderer, #like-button-renderer');
+          return v ? { elapsed: v.currentTime, duration: Number.isFinite(v.duration) ? v.duration : 0, paused: v.paused, rating: rating?.getAttribute('like-status') || 'INDIFFERENT', canRate: !!rating } : null;
         })()`)
           .catch(() => null)) as {
           elapsed: number;
@@ -588,6 +602,10 @@ export function setupClassic(win: BrowserWindow) {
           paused: clock?.paused ?? song.isPaused ?? true,
           animatedSpeakers: config.get('options.animatedSpeakers') ?? true,
           trayPinned: config.get('options.trayPinned') ?? false,
+          bands:
+            Date.now() - audioLevelAt < 500
+              ? audioBands
+              : { bass: 0, high: 0, energy: 0 },
           bass: Date.now() - audioLevelAt < 500 ? audioLevel : 0,
           palette: skins[config.get('options.classicSkin')] ?? skins.graphite,
         };

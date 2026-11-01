@@ -32,8 +32,8 @@ jobs:
           GIT_COMMITTER_EMAIL: noreply@users.noreply.github.com
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD^)" = 0d075c8a39178647afc77d0f07257e164a2b3961
-          safe=$(git commit-tree "HEAD^{tree}" -p "HEAD^" -m "Expand trails and add reactive flight transitions")
+          test "$(git rev-parse HEAD^)" = 4d61ef17df4ec2b988329c1fa58a6397a872bb2a
+          safe=$(git commit-tree "HEAD^{tree}" -p "HEAD^" -m "Improve artwork, game video backgrounds and tray feedback")
           git push origin "$safe:refs/heads/feat/classic-desktop" --force-with-lease="refs/heads/feat/classic-desktop:$GITHUB_SHA"
           echo "sha=$safe" >> "$GITHUB_OUTPUT"
   windows:
